@@ -23,6 +23,8 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const flat = b.option(bool, "flat", "Put files into the installation prefix in a manner suited for upstream distribution rather than a posix file system hierarchy standard") orelse false;
+    const shared_cli = b.option(bool, "shared-cli", "Build the compiler CLI as a shared library exporting zig_cli_main") orelse false;
+    if (shared_cli) b.installFile("include/zig_cli.h", "zig_cli.h");
     const single_threaded = b.option(bool, "single-threaded", "Build artifacts that run in single threaded mode");
     const use_zig_libcxx = b.option(bool, "use-zig-libcxx", "If libc++ is needed, use zig's bundled version, don't try to integrate with the system") orelse false;
 
@@ -199,9 +201,11 @@ pub fn build(b: *std.Build) !void {
         .valgrind = valgrind,
         .sanitize_thread = sanitize_thread,
         .single_threaded = single_threaded,
-    });
-    exe.pie = pie;
-    exe.entitlements = entitlements;
+    }, shared_cli);
+    if (!shared_cli) {
+        exe.pie = pie;
+        exe.entitlements = entitlements;
+    }
 
     const use_llvm = b.option(bool, "use-llvm", "Use the llvm backend");
     exe.use_llvm = use_llvm;
@@ -643,7 +647,7 @@ fn addWasiUpdateStep(b: *std.Build, version: [:0]const u8) !void {
             // * `nontrapping_bulk_memory_len0` is supported by `wasm2c`.
             .cpu_features = "baseline-extended_const+nontrapping_bulk_memory_len0",
         }) catch unreachable),
-    });
+    }, false);
 
     const exe_options = b.addOptions();
     exe.root_module.addOptions("build_options", exe_options);
@@ -735,13 +739,18 @@ fn addCompilerMod(b: *std.Build, options: AddCompilerModOptions) *std.Build.Modu
     return compiler_mod;
 }
 
-fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions) *std.Build.Step.Compile {
-    const exe = b.addExecutable(.{
+fn addCompilerStep(b: *std.Build, options: AddCompilerModOptions, shared_cli: bool) *std.Build.Step.Compile {
+    const exe = if (shared_cli) b.addLibrary(.{
+        .name = "zig",
+        .linkage = .dynamic,
+        .max_rss = 7_800_000_000,
+        .root_module = addCompilerMod(b, options),
+    }) else b.addExecutable(.{
         .name = "zig",
         .max_rss = 7_800_000_000,
         .root_module = addCompilerMod(b, options),
     });
-    exe.stack_size = stack_size;
+    if (!shared_cli) exe.stack_size = stack_size;
 
     return exe;
 }

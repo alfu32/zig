@@ -86,6 +86,22 @@ echo "If the following command fails, it means nondeterminism has been"
 echo "introduced, making stage3 and stage4 no longer byte-for-byte identical."
 diff stage3-release/bin/zig stage4-release/bin/zig
 
+# Build the embeddable compiler CLI distribution.
+stage3-release/bin/zig build install \
+  --prefix stage4-ffi \
+  --search-prefix "$PREFIX" \
+  -Dversion-string="$(stage3-release/bin/zig version)" \
+  -Dtarget=x86_64-linux-gnu \
+  -Dcpu=baseline \
+  -Doptimize=ReleaseFast \
+  -Dstrip \
+  -Duse-zig-libcxx \
+  -Denable-llvm \
+  -Dshared-cli \
+  -Dflat
+test -f stage4-ffi/libzig.so
+test -f stage4-ffi/zig_cli.h
+
 # Ensure that updating the wasm binary from this commit will result in a viable build.
 stage3-release/bin/zig build update-zig1
 

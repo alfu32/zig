@@ -125,3 +125,20 @@ CheckLastExitCode
 
 & .\test-x86_64-windows-msvc.exe
 CheckLastExitCode
+
+Write-Output "Build FFI distribution..."
+stage3-release\bin\zig.exe build install `
+  --prefix stage4-ffi `
+  --search-prefix "$PREFIX_PATH" `
+  -Dversion-string="$(stage3-release\bin\zig.exe version)" `
+  -Dtarget="$TARGET" `
+  -Dcpu="$MCPU" `
+  -Doptimize=ReleaseFast `
+  -Dstrip `
+  -Duse-zig-libcxx `
+  -Denable-llvm `
+  -Dshared-cli `
+  -Dflat
+CheckLastExitCode
+if (!(Test-Path "stage4-ffi\zig.dll")) { throw "FFI DLL was not produced" }
+if (!(Test-Path "stage4-ffi\zig_cli.h")) { throw "FFI header was not installed" }

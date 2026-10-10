@@ -187,11 +187,70 @@ pub fn main() anyerror!void {
     defer if (is_debug) {
         _ = debug_allocator.deinit();
     };
+    const args = try process.argsAlloc(std.heap.page_allocator);
+    defer process.argsFree(std.heap.page_allocator, args);
+
+    return runCli(gpa, is_debug, args);
+}
+
+var cli_invocation_active = std.atomic.Value(bool).init(false);
+
+const CliInvocation = struct {
+    gpa: Allocator,
+    is_debug: bool,
+    args: []const []const u8,
+    exit_code: c_int = 0,
+};
+
+/// Invoke Zig's command line interface using argv supplied by an embedding process.
+/// The current process environment and standard streams are used.
+pub export fn zig_cli_main(argc: c_int, argv: ?[*]const [*:0]const u8) callconv(.c) c_int {
+    if (argc < 1) return 2;
+    const argv_ptr = argv orelse return 2;
+    if (cli_invocation_active.cmpxchgStrong(false, true, .acquire, .monotonic) != null) return 3;
+    defer cli_invocation_active.store(false, .release);
+
+    crash_report.initialize();
+    const gpa, const is_debug = if (build_options.debug_gpa)
+        .{ debug_allocator.allocator(), true }
+    else if (native_os == .wasi)
+        .{ std.heap.wasm_allocator, false }
+    else if (builtin.link_libc) blk: {
+        if (@alignOf(std.c.max_align_t) < @max(@alignOf(i128), std.atomic.cache_line)) {
+            break :blk .{ std.heap.c_allocator, false };
+        }
+        break :blk .{ std.heap.raw_c_allocator, false };
+    } else switch (builtin.mode) {
+        .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+        .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+    };
+
+    const args = std.heap.page_allocator.alloc([]const u8, @intCast(argc)) catch return 1;
+    defer std.heap.page_allocator.free(args);
+    for (args, 0..) |*arg, i| arg.* = mem.span(argv_ptr[i]);
+    var invocation: CliInvocation = .{ .gpa = gpa, .is_debug = is_debug, .args = args };
+    const thread = std.Thread.spawn(.{ .stack_size = stack_size }, runCliWorker, .{&invocation}) catch |err| {
+        std.log.err("unable to start zig CLI thread: {s}", .{@errorName(err)});
+        if (is_debug) _ = debug_allocator.deinit();
+        return 1;
+    };
+    thread.join();
+    if (is_debug) _ = debug_allocator.deinit();
+    return invocation.exit_code;
+}
+
+fn runCliWorker(invocation: *CliInvocation) void {
+    runCli(invocation.gpa, invocation.is_debug, invocation.args) catch |err| {
+        std.log.err("zig CLI failed: {s}", .{@errorName(err)});
+        invocation.exit_code = 1;
+    };
+}
+
+fn runCli(gpa: Allocator, is_debug: bool, args: []const []const u8) !void {
+    _ = is_debug;
     var arena_instance = std.heap.ArenaAllocator.init(gpa);
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
-
-    const args = try process.argsAlloc(arena);
 
     if (tracy.enable_allocation) {
         var gpa_tracy = tracy.tracyAllocator(gpa);
