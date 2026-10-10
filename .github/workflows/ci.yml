@@ -15,8 +15,7 @@ jobs:
       - name: Build FFI distribution
         run: sh ci/build-ffi-linux.sh
       - name: Smoke test exported entry point
-        run: >-
-          python3 -c 'import ctypes; lib=ctypes.CDLL("dist/lib/libzig.so"); fn=lib.zig_cli_main; fn.argtypes=[ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)]; fn.restype=ctypes.c_int; argv=(ctypes.c_char_p*2)(b"zig", b"version"); raise SystemExit(fn(2, argv))'
+        run: python3 ci/smoke-test-ffi.py
       - name: Package FFI distribution
         run: tar -C dist -czf zig-ffi-x86_64-linux-gnu.tar.gz .
       - name: Upload package
@@ -36,8 +35,7 @@ jobs:
         run: ci/build-ffi-windows.ps1
       - name: Smoke test exported entry point
         shell: powershell
-        run: >-
-          python -c 'import ctypes, pathlib; dll=next(pathlib.Path("dist").rglob("zig.dll")); lib=ctypes.CDLL(str(dll)); fn=lib.zig_cli_main; fn.argtypes=(ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)); fn.restype=ctypes.c_int; argv=(ctypes.c_char_p*2)(b"zig", b"version"); result=fn(2, argv); print("zig_cli_main returned", result); raise SystemExit(result)'
+        run: python ci/smoke-test-ffi.py
       - name: Package FFI distribution
         shell: powershell
         run: Compress-Archive -Path dist/* -DestinationPath zig-ffi-x86_64-windows-gnu.zip -Force
