@@ -19,5 +19,14 @@ if [ ! -x "$WASMTIME_DIR/wasmtime" ]; then
   tar -xJf "$archive" -C "$HOME/deps"
 fi
 
+QEMU_DIR="$HOME/deps/qemu-linux-x86_64-10.0.2/bin"
+QEMU_BIN="$(command -v qemu-x86_64 || command -v qemu-x86_64-static || true)"
+if [ -z "$QEMU_BIN" ]; then
+  echo "qemu-user-static did not install qemu-x86_64-static" >&2
+  exit 1
+fi
+mkdir -p "$QEMU_DIR"
+ln -sf "$QEMU_BIN" "$QEMU_DIR/qemu-x86_64"
+
 "$WASMTIME_DIR/wasmtime" --version
-qemu-x86_64 --version
+"$QEMU_DIR/qemu-x86_64" --version
