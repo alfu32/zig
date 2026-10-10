@@ -229,7 +229,7 @@ pub export fn zig_cli_main(argc: c_int, argv: ?[*]const [*:0]const u8) callconv(
     defer std.heap.page_allocator.free(args);
     for (args, 0..) |*arg, i| arg.* = mem.span(argv_ptr[i]);
     var invocation: CliInvocation = .{ .gpa = gpa, .is_debug = is_debug, .args = args };
-    const thread = std.Thread.spawn(.{ .stack_size = stack_size }, runCliWorker, .{&invocation}) catch |err| {
+    const thread = std.Thread.spawn(.{ .stack_size = thread_stack_size }, runCliWorker, .{&invocation}) catch |err| {
         std.log.err("unable to start zig CLI thread: {s}", .{@errorName(err)});
         if (is_debug) _ = debug_allocator.deinit();
         return 1;
@@ -5743,7 +5743,8 @@ fn jitCmd(
     child_argv.appendSliceAssumeCapacity(args);
 
     if (process.can_execv and options.capture == null) {
-        const err = process.execv(gpa, child_argv.items);
+        var env_map = try process.getEnvMap(arena);
+        const err = process.execve(gpa, child_argv.items, &env_map);
         const cmd = try std.mem.join(arena, " ", child_argv.items);
         fatal("the following command failed to execve with '{s}':\n{s}", .{
             @errorName(err),

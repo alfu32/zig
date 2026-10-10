@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x86_64-gnu:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build FFI distribution
+        run: sh ci/build-ffi-linux.sh
+      - name: Smoke test exported entry point
+        run: >-
+          python3 -c 'import ctypes; lib=ctypes.CDLL("dist/lib/libzig.so"); fn=lib.zig_cli_main; fn.argtypes=[ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)]; fn.restype=ctypes.c_int; argv=(ctypes.c_char_p*2)(b"zig", b"version"); raise SystemExit(fn(2, argv))'
+      - name: Package FFI distribution
+        run: tar -C dist -czf zig-ffi-x86_64-linux-gnu.tar.gz .
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: zig-ffi-x86_64-linux-gnu
+          path: zig-ffi-x86_64-linux-gnu.tar.gz
+          if-no-files-found: error
+
+  windows-x86_64-gnu:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build FFI distribution
+        shell: powershell
+        run: ci/build-ffi-windows.ps1
+      - name: Smoke test exported entry point
+        shell: powershell
+        run: >-
+          python -c 'import ctypes, pathlib; dll=next(pathlib.Path("dist").rglob("zig.dll")); lib=ctypes.CDLL(str(dll)); fn=lib.zig_cli_main; fn.argtypes=(ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)); fn.restype=ctypes.c_int; argv=(ctypes.c_char_p*2)(b"zig", b"version"); result=fn(2, argv); print("zig_cli_main returned", result); raise SystemExit(result)'
+      - name: Package FFI distribution
+        shell: powershell
+        run: Compress-Archive -Path dist/* -DestinationPath zig-ffi-x86_64-windows-gnu.zip -Force
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: zig-ffi-x86_64-windows-gnu
+          path: zig-ffi-x86_64-windows-gnu.zip
+          if-no-files-found: error
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [linux-x86_64-gnu, windows-x86_64-gnu]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: packages/**/*
