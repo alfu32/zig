@@ -39,6 +39,14 @@ jobs:
         run: sh ci/provision-linux-test-deps.sh
       - name: Build and Test
         run: sh ci/x86_64-linux-release.sh
+      - name: Package FFI distribution
+        run: tar -C build-release -czf zig-ffi-x86_64-linux-gnu.tar.gz stage4-ffi
+      - name: Upload FFI package
+        uses: actions/upload-artifact@v4
+        with:
+          name: zig-ffi-x86_64-linux-gnu
+          path: zig-ffi-x86_64-linux-gnu.tar.gz
+          if-no-files-found: error
   aarch64-linux-debug:
     timeout-minutes: 360
     runs-on: ubuntu-24.04-arm
@@ -102,3 +110,28 @@ jobs:
         uses: actions/checkout@v4
       - name: Build and Test
         run: ci/x86_64-windows-release.ps1
+      - name: Package FFI distribution
+        shell: powershell
+        run: Compress-Archive -Path build-release/stage4-ffi -DestinationPath zig-ffi-x86_64-windows-gnu.zip -Force
+      - name: Upload FFI package
+        uses: actions/upload-artifact@v4
+        with:
+          name: zig-ffi-x86_64-windows-gnu
+          path: zig-ffi-x86_64-windows-gnu.zip
+          if-no-files-found: error
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [x86_64-linux-release, x86_64-windows-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download FFI packages
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/**/*
