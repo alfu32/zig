@@ -15,7 +15,7 @@ if ((& $zig version) -ne $zigVersion) { throw "Unexpected Zig bootstrap compiler
   -Dtarget=x86_64-windows-gnu `
   -Doptimize=ReleaseFast `
   -Dforce-link-libc `
-  -Dversion-string=0.15.2-ffi.0 `
+  "-Dversion-string=0.15.2-ffi.0" `
   --prefix dist
 if ($LASTEXITCODE -ne 0) { throw "Zig FFI build failed with exit code $LASTEXITCODE" }
 
